@@ -1,125 +1,221 @@
+import os
+import re
 import sys
 import json
-import urllib.request
 from pathlib import Path
-from InquirerPy import inquirer
-from InquirerPy.base.control import Choice
-from InquirerPy.separator import Separator
 
-SETTINGS_PATH = Path(r"C:\Users\teash\.claude\settings.json")
-CLAUDE_EXE = r"C:\Users\teash\.local\bin\claude.exe"
+# Resolve home and config paths dynamically
+HOME_DIR = Path.home()
+CLAUDE_DIR = HOME_DIR / ".claude"
+SETTINGS_PATH = CLAUDE_DIR / "settings.json"
 
-CURATED_MODELS = [
-    Separator("--- NVIDIA NIM Flash & High-Performance Models ---"),
-    Choice("nemotron-bolt", name="NVIDIA NIM: Nemotron 3.5 Bolt (0.5s Ultra-Fast Flash - Recommended)"),
-    Choice("nemotron-lightning", name="NVIDIA NIM: Nemotron 3.5 Lightning (30B MoE Reasoning)"),
-    Choice("mistral-large-4", name="NVIDIA NIM: Mistral Large 4 (1T Parameter MoE)"),
-    Choice("minimax-flash", name="NVIDIA NIM: MiniMax M3.1 Flash (428B MoE)"),
-
-    Separator("--- Anthropic Claude (via OpenRouter) ---"),
-    Choice("anthropic/claude-3.7-sonnet", name="Anthropic: Claude 3.7 Sonnet"),
-    Choice("anthropic/claude-3.5-sonnet", name="Anthropic: Claude 3.5 Sonnet"),
-    Choice("anthropic/claude-3.5-haiku", name="Anthropic: Claude 3.5 Haiku (Fast)"),
-    Choice("anthropic/claude-3-opus", name="Anthropic: Claude 3 Opus"),
-
-    Separator("--- Google Gemini (Direct AI Studio / Gateway) ---"),
-    Choice("gemini-2.5-pro", name="Google: Gemini 2.5 Pro"),
-    Choice("gemini-2.5-flash", name="Google: Gemini 2.5 Flash (Ultra Fast)"),
-    Choice("gemini-2.0-flash", name="Google: Gemini 2.0 Flash"),
-    Choice("gemini-1.5-pro", name="Google: Gemini 1.5 Pro"),
-
-    Separator("--- DeepSeek & Coding Specialists ---"),
-    Choice("openrouter/deepseek-chat", name="DeepSeek: DeepSeek V3 (Chat/Coding)"),
-    Choice("deepseek/deepseek-r1", name="DeepSeek: DeepSeek R1 (Reasoning via OpenRouter)"),
-    Choice("qwen/qwen-2.5-coder-32b-instruct", name="Qwen: Qwen 2.5 Coder 32B Instruct"),
-
-    Separator("--- Free Tier Models on OpenRouter ---"),
-    Choice("nvidia/nemotron-3.5-lightning:free", name="FREE: NVIDIA Nemotron 3.5 Lightning (OpenRouter)"),
-    Choice("cohere/north-mini-code:free", name="FREE: Cohere North Mini Code"),
-
-    Separator("--- More Options ---"),
-    Choice("__SEARCH_ALL__", name="Search all models from catalog (Fuzzy Search)..."),
-    Choice("__CUSTOM__", name="Enter custom model ID manually..."),
+# Search for proxy .env in multiple locations
+POTENTIAL_ENV_PATHS = [
+    Path(__file__).resolve().parent.parent / "proxy" / ".env",
+    CLAUDE_DIR / "proxy" / ".env",
+    Path(os.environ.get("TEMP", "")) / "free-claude-code" / ".env",
 ]
 
-def load_settings():
-    if SETTINGS_PATH.exists():
-        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+def get_env_path():
+    for p in POTENTIAL_ENV_PATHS:
+        if p.is_file():
+            return p
+    # Default to ~/.claude/proxy/.env
+    default_p = CLAUDE_DIR / "proxy" / ".env"
+    default_p.parent.mkdir(parents=True, exist_ok=True)
+    return default_p
 
-def save_settings(data):
+def update_env_file(model_str):
+    env_path = get_env_path()
+    lines = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    
+    new_lines = []
+    keys_updated = set()
+    
+    for line in lines:
+        stripped = line.strip()
+        matched = False
+        for k in ["MODEL", "MODEL_SONNET", "MODEL_HAIKU"]:
+            if stripped.startswith(f"{k}=") or stripped.startswith(f"{k} ="):
+                new_lines.append(f'{k}="{model_str}"')
+                keys_updated.add(k)
+                matched = True
+                break
+        if not matched:
+            new_lines.append(line)
+            
+    for k in ["MODEL", "MODEL_SONNET", "MODEL_HAIKU"]:
+        if k not in keys_updated:
+            new_lines.append(f'{k}="{model_str}"')
+            
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    print(f"[OK] Updated proxy .env at: {env_path}")
+
+def update_settings_json():
+    if not SETTINGS_PATH.exists():
+        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        settings = {}
+    else:
+        try:
+            with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+        except Exception:
+            settings = {}
+
+    env = settings.get("env", {})
+    env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:8082"
+    env["ANTHROPIC_AUTH_TOKEN"] = "dummy"
+    env["ANTHROPIC_API_KEY"] = "dummy"
+    env["CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"] = "1"
+    env["ANTHROPIC_MODEL"] = "claude-3-5-sonnet"
+    env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = "claude-3-5-sonnet"
+    env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = "claude-3-opus"
+    env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = "claude-3-5-haiku"
+    
+    settings["env"] = env
+    settings["model"] = "claude-3-5-sonnet"
+    
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+        json.dump(settings, f, indent=2)
+    print(f"[OK] Settings verified at: {SETTINGS_PATH}")
 
-def set_model_in_config(model_id):
-    settings = load_settings()
-    settings["model"] = model_id
-    if "env" not in settings:
-        settings["env"] = {}
-    settings["env"]["ANTHROPIC_MODEL"] = model_id
-    settings["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] = model_id
-    settings["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] = model_id
-    settings["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = model_id
-    save_settings(settings)
+MODELS_MENU = [
+    # Category, ID, Display Name
+    ("--- NVIDIA NIM Models (Free with NVIDIA API Key) ---", None, None),
+    (
+        "NVIDIA NIM",
+        "nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b",
+        "NVIDIA Nemotron 3.5 Lightning (30B MoE Flash - Fast & Executable Tools - Recommended)"
+    ),
+    (
+        "NVIDIA NIM",
+        "nvidia_nim/mistralai/mistral-large-4-1t-a52b",
+        "Mistral Large 4 (1 Trillion Param MoE - Frontier Architecture)"
+    ),
+    (
+        "NVIDIA NIM",
+        "nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b",
+        "NVIDIA Nemotron 3 Ultra (550B Frontier Model)"
+    ),
+    (
+        "NVIDIA NIM",
+        "nvidia_nim/nvidia/nemotron-3.5-bolt-e4b",
+        "NVIDIA Nemotron 3.5 Bolt (4B Ultra-Fast Flash)"
+    ),
+    (
+        "NVIDIA NIM",
+        "nvidia_nim/poolside/laguna-xs-2.1",
+        "Poolside Laguna XS 2.1 (Fast Coding)"
+    ),
 
-def fetch_all_models():
-    print("Fetching live model catalog from OpenRouter...")
-    try:
-        req = urllib.request.Request("https://openrouter.ai/api/v1/models", headers={"User-Agent": "ClaudeCode/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-        models = data.get("data", [])
-        return [Choice(m["id"], name=f"{m.get('name', m['id'])} ({m['id']})") for m in sorted(models, key=lambda x: x.get("name", ""))]
-    except Exception as e:
-        print(f"Warning: Could not fetch live models ({e}). Using cached models.")
-        return []
+    ("--- OpenRouter Free Models (Requires OPENROUTER_API_KEY in .env) ---", None, None),
+    (
+        "OpenRouter",
+        "open_router/moonshotai/kimi-k2.5:free",
+        "Kimi K2.5 (Moonshot AI - Free on OpenRouter)"
+    ),
+    (
+        "OpenRouter",
+        "open_router/z-ai/glm-4.5-air:free",
+        "GLM 4.5 Air (Zhipu AI - Free on OpenRouter)"
+    ),
+    (
+        "OpenRouter",
+        "open_router/stepfun/step-3.5-flash:free",
+        "StepFun 3.5 Flash (Free on OpenRouter)"
+    ),
+    (
+        "OpenRouter",
+        "open_router/deepseek/deepseek-r1-0528:free",
+        "DeepSeek R1 Reasoning (Free on OpenRouter)"
+    ),
+    (
+        "OpenRouter",
+        "open_router/openai/gpt-oss-120b:free",
+        "OpenAI GPT-OSS 120B (Free on OpenRouter)"
+    ),
+
+    ("--- DeepSeek Direct API (Requires DEEPSEEK_API_KEY in .env) ---", None, None),
+    (
+        "DeepSeek",
+        "deepseek/deepseek-chat",
+        "DeepSeek V3 (Chat & Coding Specialist)"
+    ),
+    (
+        "DeepSeek",
+        "deepseek/deepseek-reasoner",
+        "DeepSeek R1 (Frontier Reasoning)"
+    ),
+
+    ("--- Local Models (No API Key Required) ---", None, None),
+    (
+        "Local",
+        "lmstudio/unsloth/Qwen3.5-35B-A3B-GGUF",
+        "LM Studio: Qwen 3.5 35B GGUF (http://localhost:1234)"
+    ),
+    (
+        "Local",
+        "llamacpp/local-model",
+        "llama.cpp: Local Server (http://localhost:8080)"
+    ),
+
+    ("--- Custom ---", None, None),
+    (
+        "Custom",
+        "__CUSTOM__",
+        "Enter custom model ID manually (e.g. nvidia_nim/..., open_router/...)"
+    )
+]
 
 def main():
-    settings = load_settings()
-    current_model = settings.get("model", "claude-3-5-sonnet")
+    try:
+        from InquirerPy import inquirer
+        from InquirerPy.base.control import Choice
+        from InquirerPy.separator import Separator
 
-    # If model was passed as CLI argument, use it directly
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
-        selected = sys.argv[1]
-        set_model_in_config(selected)
-        print(f"\n[OK] Model updated to: {selected}\n")
-        return selected
+        choices = []
+        for cat, mid, name in MODELS_MENU:
+            if mid is None:
+                choices.append(Separator(cat))
+            else:
+                choices.append(Choice(mid, name=name))
 
-    print("=" * 60)
-    print("  Claude Code Model Selector (All Providers & Models)")
-    print(f"  Current Model: {current_model}")
-    print("=" * 60)
+        selected = inquirer.select(
+            message="Select Active Model for Claude Code:",
+            choices=choices,
+            default="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
+        ).execute()
 
-    selected = inquirer.fuzzy(
-        message="Select model (type to search, Enter to choose):",
-        choices=CURATED_MODELS,
-        default=current_model,
-        border=True,
-    ).execute()
+    except ImportError:
+        # Fallback text menu if InquirerPy is not installed
+        print("\n=== Select Model for Claude Code ===")
+        selectable = []
+        for cat, mid, name in MODELS_MENU:
+            if mid is None:
+                print(f"\n{cat}")
+            else:
+                selectable.append((mid, name))
+                print(f"  [{len(selectable)}] {name}")
+        print()
+        val = input(f"Enter choice [1-{len(selectable)}]: ").strip()
+        try:
+            idx = int(val) - 1
+            selected = selectable[idx][0]
+        except Exception:
+            selected = "nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
 
     if selected == "__CUSTOM__":
-        selected = inquirer.text(
-            message="Enter model ID (e.g. minimax-flash):"
-        ).execute().strip()
-    elif selected == "__SEARCH_ALL__":
-        all_models = fetch_all_models()
-        if not all_models:
-            print("Falling back to default.")
-            selected = current_model
-        else:
-            selected = inquirer.fuzzy(
-                message="Search all models:",
-                choices=all_models,
-                border=True
-            ).execute()
+        selected = input("\nEnter custom model (e.g., nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b): ").strip()
+        if not selected:
+            print("No model entered. Exiting.")
+            return
 
-    if selected:
-        set_model_in_config(selected)
-        print(f"\n[OK] Active model set to: {selected}\n")
-        return selected
-
-    return current_model
+    update_env_file(selected)
+    update_settings_json()
+    print(f"\n[SUCCESS] Active Claude Code model set to: {selected}")
+    print("If the gateway is running, it will automatically route all Claude Code requests to this model!")
 
 if __name__ == "__main__":
     main()

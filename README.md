@@ -1,238 +1,284 @@
-# Claude Code Free Multi-Provider Harness
+# ⚡ Claude Code Free Models Harness
 
-A complete, portable harness that connects Anthropic's **Claude Code CLI** to **NVIDIA NIM**, **Google Gemini**, and **OpenRouter**, allowing you to run free-tier models (Nemotron, GLM, Kimi, DeepSeek, Mistral, Gemini, etc.) as autonomous coding agents without an Anthropic subscription.
+> **Run Anthropic's official Claude Code CLI completely free using NVIDIA NIM, OpenRouter, DeepSeek, or local LLMs — with 100% executable tool calls and no Anthropic API subscription required.**
 
----
-
-## Table of Contents
-1. [Architecture Overview](#architecture-overview)
-2. [Quick Installation (1-Click)](#quick-installation-1-click)
-3. [Prerequisites](#prerequisites)
-4. [How to Add Other Free Models (GLM, Kimi, DeepSeek, etc.)](#how-to-add-other-free-models)
-5. [Command Reference](#command-reference)
-6. [Key Technical Discoveries & Best Practices](#key-technical-discoveries--best-practices)
-7. [Repository File Map](#repository-file-map)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-purple.svg)](https://github.com/anthropics/claude-code)
 
 ---
 
-## Architecture Overview
+## 🎯 What This Solves
 
-Claude Code natively speaks Anthropic's Messages protocol (`/v1/messages`). This harness deploys a lightweight local LiteLLM translation proxy on `localhost:4000` that intercepts Anthropic calls, translates them to OpenAI-compatible `/chat/completions` calls for NVIDIA NIM / Gemini / OpenRouter, and translates the responses (including function calling and thinking tokens) back to Claude Code.
+### The "Just Making Conversations" Problem — Explained & Solved
 
-```mermaid
-flowchart TD
-    Claude["Claude Code CLI (claude / cm)"] -->|"Anthropic Protocol (/v1/messages)"| Proxy["Local Gateway (port 4000)
-    python -m litellm.proxy.proxy_cli"]
-    Proxy -->|"api_base: integrate.api.nvidia.com/v1
-    provider: hosted_vllm"| NIM["NVIDIA NIM API (Free Tier)"]
-    Proxy -->|"api_key: AI Studio"| Gemini["Google Gemini API"]
-    Proxy -->|"api_key: OpenRouter"| OpenRouter["OpenRouter API"]
+When running open-weight or third-party models in Claude Code via generic proxies (like basic LiteLLM), users frequently experience this critical issue:
+> *"I asked Claude Code to perform a task (like creating or editing a file), but it just chats about what it would do instead of actually doing it!"*
 
-    NIM --> Models["Free NIM Models:
-    - Nemotron 3.5 Bolt (0.5s Fast)
-    - Nemotron 3.5 Lightning (Reasoning)
-    - Mistral Large 4 (1T MoE)
-    - Kimi, GLM, DeepSeek"]
-```
+### Why this happens:
+1. **Claude Code expects native Anthropic SSE tool events** (`content_block_start`, `tool_use`, `input_json_delta`, `content_block_stop`).
+2. Open-weight models (Nemotron, Llama, Qwen, GLM, etc.) often receive 30+ Claude tool schemas with an extensive 40,000+ token internal system prompt. Under this load, many models output the tool invocation as plain text (e.g. `Write{file_path: "test.txt", content: "..."}` or `● <function=Write>...`) rather than structured OpenAI function call objects.
+3. Generic proxies stream this text directly to Claude Code. Claude Code interprets it as normal conversational text, prints it out, and **never executes the tool or touches the disk**!
+
+### How this Harness fixes it:
+- 🛡️ **Full Anthropic SSE Streaming Adapter**: Converts streaming OpenAI `/chat/completions` directly into Anthropic's native message stream format.
+- ⚙️ **Heuristic Tool Parser**: Built-in stateful parser that automatically intercepts text-based tool calls (`Write{...}`, `Bash{...}`, `Edit{...}`, `Glob{...}`, `● <function=...>`, etc.), extracts parameters (including unquoted pseudo-JSON keys), strips the command syntax from the conversational reply, and emits structured Anthropic `tool_use` events.
+- ⚡ **Physical Tool Execution**: Claude Code receives genuine `tool_use` blocks and immediately executes the commands (`Write`, `Edit`, `Bash`, `View`, etc.) on your machine.
+- 🚀 **Request Optimization**: Intercepts background non-essential Claude Code probes (title generation, prefix detection) locally, saving quota and latency.
 
 ---
 
-## Quick Installation (1-Click)
+## 🚀 Quick Start (Step-by-Step Setup)
 
-To set up this harness from scratch on any Windows machine:
+### 1. Prerequisites
+- **Python 3.11+** installed and available in PATH.
+- **Node.js 18+** (required for official Claude Code CLI).
+- **Claude Code CLI** installed:
+  ```powershell
+  npm install -g @anthropic-ai/claude-code
+  ```
+- **NVIDIA NIM API Key** (Free 1,000 credits, no credit card needed):
+  - Grab your key from [build.nvidia.com/settings/api-keys](https://build.nvidia.com/settings/api-keys)
 
-### 1. Clone the Repository
+---
+
+### 2. Installation from Git
+
+Clone the repository to any folder (e.g., `E:\ClaudeCode` or `C:\ClaudeCode`):
+
 ```bash
 git clone https://github.com/Ashwin312007/ClaudeCode.git
 cd ClaudeCode
 ```
 
-### 2. Run the Installer
-- **Command Prompt / File Explorer**: Double-click or run:
-  ```cmd
-  install.bat
-  ```
-- **PowerShell**:
-  ```powershell
-  .\install.ps1
-  ```
+Run the automated installer:
 
-### 3. Set Your NVIDIA API Key
-```bash
-set-nvidia-key <your-nvapi-key>
+#### On Windows (Command Prompt or PowerShell):
+```cmd
+install.bat
 ```
-*(This automatically validates your key against NVIDIA NIM and synchronizes it across all configs).*
+*Or using PowerShell:*
+```powershell
+.\install.ps1
+```
+
+The installer will:
+1. Verify Python and automatically install `uv` package manager if missing.
+2. Deploy the proxy engine to `%USERPROFILE%\.claude\proxy`.
+3. Install all isolated proxy dependencies via `uv sync`.
+4. Deploy launcher commands (`start-claude-gateway`, `claude-model`, `cm`, `set-nvidia-key`) to `%USERPROFILE%\.local\bin`.
+5. Configure `~/.claude/settings.json` to route Claude Code to `http://127.0.0.1:8082`.
+6. Add `%USERPROFILE%\.local\bin` to your User PATH.
+
+> [!NOTE]
+> Reopen your terminal after running `install.bat` so the PATH update takes effect.
+
+---
+
+### 3. Add Your API Key
+
+Run the key configuration command:
+```cmd
+set-nvidia-key
+```
+Paste your `nvapi-...` key. It will validate against NVIDIA's API and update your configuration.
+
+---
 
 ### 4. Start the Gateway & Launch Claude Code
-```bash
+
+In terminal 1, start the gateway:
+```cmd
 start-claude-gateway
 ```
-In a new terminal or project folder:
-```bash
+*You will see: `Uvicorn running on http://127.0.0.1:8082`.*
+
+In terminal 2, run Claude Code:
+```cmd
 claude
 ```
+Now ask Claude Code to create files, run git commands, edit code, or build projects — all tool operations will execute directly on disk!
 
 ---
 
-## Prerequisites
+## 🎮 Switching & Adding Models
 
-Ensure the following tools are installed on your machine:
+You can switch models interactively at any time:
 
-1. **Node.js & Claude Code CLI**:
-   ```bash
-   npm install -g @anthropic-ai/claude-code
-   ```
-2. **Python 3.10+**:
-   Installed and available on PATH (`python --version`).
-3. **Python Packages**:
-   ```bash
-   pip install litellm InquirerPy
-   ```
-4. **NVIDIA API Key**:
-   Create a free developer account at [build.nvidia.com](https://build.nvidia.com/settings/api-keys) to obtain your `nvapi-...` key.
-
----
-
-## How to Add Other Free Models
-
-You can easily plug in any new model from NVIDIA NIM, OpenRouter, or Gemini.
-
-### Step 1: Add the Model to `litellm-config.yaml`
-Open `%USERPROFILE%\.claude\litellm-config.yaml` (or edit `.claude\litellm-config.yaml` in this repository).
-
-#### Case A: Adding an NVIDIA NIM Model (e.g. GLM-5.3-Flash, Kimi K2.6 / K3.1, DeepSeek)
-> [!IMPORTANT]
-> **Always use `hosted_vllm/<nvidia_model_id>`** as the model prefix for NVIDIA NIM. This prevents LiteLLM from hitting the unsupported `/responses` endpoint and forces standard `/chat/completions`.
-
-```yaml
-model_list:
-  # Example: GLM 5.3 Flash
-  - model_name: glm-flash
-    litellm_params:
-      model: hosted_vllm/z-ai/glm-5.3-flash
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: "os.environ/NVIDIA_API_KEY"
-
-  # Example: Moonshot Kimi K2.6 / K3.1
-  - model_name: kimi-pro
-    litellm_params:
-      model: hosted_vllm/moonshotai/kimi-k2.6
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: "os.environ/NVIDIA_API_KEY"
-
-  # Example: DeepSeek V4.1 Flash
-  - model_name: deepseek-flash
-    litellm_params:
-      model: hosted_vllm/deepseek-ai/deepseek-v4.1-flash
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: "os.environ/NVIDIA_API_KEY"
+```cmd
+claude-model
 ```
+*(or simply use the shortcut `cm`)*
 
-#### Case B: Adding an OpenRouter Free Model (`:free`)
-OpenRouter hosts many models with free rate limits (e.g. Llama 3.3 70B, Qwen Coder, Gemma):
-```yaml
-  - model_name: llama-free
-    litellm_params:
-      model: openrouter/meta-llama/llama-3.3-70b-instruct:free
-      api_key: "os.environ/OPENROUTER_API_KEY"
-
-  - model_name: qwen-free
-    litellm_params:
-      model: openrouter/qwen/qwen-2.5-coder-32b-instruct:free
-      api_key: "os.environ/OPENROUTER_API_KEY"
+### Interactive Selection Menu:
+```text
+? Select Active Model for Claude Code:
+ > NVIDIA NIM: Nemotron 3.5 Lightning (30B MoE Flash - Fast & Executable Tools - Recommended)
+   NVIDIA NIM: Mistral Large 4 (1 Trillion Param MoE - Frontier Architecture)
+   NVIDIA NIM: Nemotron 3 Ultra (550B Frontier Model)
+   NVIDIA NIM: Nemotron 3.5 Bolt (4B Ultra-Fast Flash)
+   OpenRouter: Kimi K2.5 (Moonshot AI - Free on OpenRouter)
+   OpenRouter: GLM 4.5 Air (Zhipu AI - Free on OpenRouter)
+   OpenRouter: StepFun 3.5 Flash (Free on OpenRouter)
+   OpenRouter: DeepSeek R1 Reasoning (Free on OpenRouter)
+   DeepSeek: DeepSeek V3 (Chat & Coding Specialist)
+   Local: LM Studio / llama.cpp
+   [Custom Model ID...]
 ```
 
 ---
 
-### Step 2: Add the Model to the Interactive Picker (`choose_model.py`)
-Open `%USERPROFILE%\.claude\choose_model.py` and add an entry under `CURATED_MODELS`:
-```python
-CURATED_MODELS = [
-    Separator("--- NVIDIA NIM Flash & High-Performance Models ---"),
-    Choice("nemotron-bolt", name="NVIDIA NIM: Nemotron 3.5 Bolt (0.5s Ultra-Fast Flash - Default)"),
-    Choice("glm-flash", name="NVIDIA NIM: GLM 5.3 Flash"),
-    Choice("kimi-pro", name="NVIDIA NIM: Kimi K2.6 / K3.1 Pro (Reasoning)"),
-    Choice("deepseek-flash", name="NVIDIA NIM: DeepSeek V4.1 Flash"),
-    Choice("nemotron-lightning", name="NVIDIA NIM: Nemotron 3.5 Lightning (30B MoE Reasoning)"),
-    Choice("mistral-large-4", name="NVIDIA NIM: Mistral Large 4 (1T Parameter MoE)"),
-    ...
-]
+## 📖 How to Add ANY Free Model
+
+All model routing is managed in `%USERPROFILE%\.claude\proxy\.env` (or `proxy/.env` in the repo).
+
+You can route Claude Code's model tiers (`Opus`, `Sonnet`, `Haiku`) independently or set a single fallback model `MODEL`:
+
+```dotenv
+# ==============================================================================
+# Model Routing Configuration
+# Format: <provider_id>/<model_name>
+# ==============================================================================
+
+# Routes heavy architecting/reasoning (Opus requests)
+MODEL_OPUS="nvidia_nim/mistralai/mistral-large-4-1t-a52b"
+
+# Routes everyday coding and tool execution (Sonnet requests)
+MODEL_SONNET="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
+
+# Routes fast queries and small edits (Haiku requests)
+MODEL_HAIKU="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
+
+# Global fallback for any other model name
+MODEL="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
 ```
 
 ---
 
-### Step 3: Switch & Run
+### 1. Adding Free NVIDIA NIM Models
+*(Requires `NVIDIA_NIM_API_KEY="nvapi-..."` in `.env`)*
 
-#### Option 1: Interactive Picker
-Run:
-```bash
-cm
-```
-(or `claude-model`). Use arrow keys or type to fuzzy-search your new model and hit Enter.
-
-#### Option 2: Command Line Switch
-```bash
-claude-provider gateway glm-flash
-```
-or launch Claude Code directly:
-```bash
-claude --model glm-flash
-```
-
----
-
-## Command Reference
-
-| Command | Description | Example |
+| Model | Provider / Model ID | Notes |
 | :--- | :--- | :--- |
-| `start-claude-gateway` | Starts the LiteLLM translation proxy on `localhost:4000` | `start-claude-gateway` |
-| `claude` | Starts Claude Code with the currently configured active model | `claude` |
-| `cm` (or `claude-model`) | Opens the interactive fuzzy model picker | `cm` |
-| `claude-model <model>` | Sets model and launches Claude Code immediately | `claude-model nemotron-bolt` |
-| `claude-provider gateway [model]` | Switches active config to the local gateway (port 4000) | `claude-provider gateway` |
-| `claude-provider openrouter [model]` | Switches active config to direct OpenRouter | `claude-provider openrouter` |
-| `set-nvidia-key <key>` | Authenticates against NIM API and synchronizes all config files | `set-nvidia-key nvapi-...` |
+| **Nemotron 3.5 Lightning** *(Default)* | `nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b` | **Best All-Round Flash**: 30B MoE, ultra-fast 0.5s latency, native tool execution. |
+| **Mistral Large 4** | `nvidia_nim/mistralai/mistral-large-4-1t-a52b` | **Frontier Powerhouse**: 1 Trillion parameter MoE (52B active), top reasoning & coding. |
+| **Nemotron 3 Ultra** | `nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b` | **550B Parameter**: Deep architectural planning. |
+| **Nemotron 3.5 Bolt** | `nvidia_nim/nvidia/nemotron-3.5-bolt-e4b` | **Ultra-Fast 4B**: Lightweight flash model for simple code lookups. |
+| **Poolside Laguna XS 2.1** | `nvidia_nim/poolside/laguna-xs-2.1` | **Fast Coding Specialist**: Optimized for code generation. |
+
+To add any of these, set in `.env`:
+```dotenv
+MODEL_SONNET="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
+```
 
 ---
 
-## Key Technical Discoveries & Best Practices
+### 2. Adding Free Models on OpenRouter (Kimi, GLM, StepFun, DeepSeek)
+*(Requires free `OPENROUTER_API_KEY="sk-or-..."` in `.env`)*
 
-### 1. Windows Application Control Bypass
-On Windows systems with AppLocker or Application Control policies, invoking `.exe` binaries inside AppData (such as `%APPDATA%\Python\...\Scripts\litellm.exe`) is blocked.
-- **Solution**: Always run the module through Python:
-  ```cmd
-  python -m litellm.proxy.proxy_cli --config "..." --port 4000 --drop_params --request_timeout 180
-  ```
+OpenRouter hosts hundreds of free models with `:free` suffixes:
 
-### 2. The `hosted_vllm/` Prefix Requirement
-If you use the prefix `openai/<model_id>`, LiteLLM proxy attempts to call OpenAI's new `/v1/responses` endpoint when receiving Anthropic `/v1/messages` calls. NVIDIA NIM does not support `/responses` and returns `404 Not Found`.
-- **Solution**: Use `hosted_vllm/<model_id>` with `api_base: https://integrate.api.nvidia.com/v1`. This forces LiteLLM to use `/v1/chat/completions` which NVIDIA NIM supports 100%.
+| Model | Provider / Model ID | Description |
+| :--- | :--- | :--- |
+| **Moonshot Kimi K2.5** | `open_router/moonshotai/kimi-k2.5:free` | Moonshot AI's flagship multimodal & agent model. |
+| **Zhipu GLM 4.5 Air** | `open_router/z-ai/glm-4.5-air:free` | Ultra-fast Chinese/English bilingual coding model. |
+| **StepFun 3.5 Flash** | `open_router/stepfun/step-3.5-flash:free` | Low-latency flash reasoning model. |
+| **DeepSeek R1 Free** | `open_router/deepseek/deepseek-r1-0528:free` | Open-source reasoning model with thinking chains. |
+| **OpenAI GPT-OSS 120B** | `open_router/openai/gpt-oss-120b:free` | Open-weight 120B model on OpenRouter. |
 
-### 3. Content Safety Screening Guardrails on NVIDIA NIM
-Certain models on NVIDIA NIM (such as `minimaxai/minimax-m3.1-flash`) have strict external safety guardrails that produce false-positive `422 Unprocessable Content: {"error": {"message": "input rejected by content safety screening"}}` errors on Claude Code's internal CLI agent prompt.
-- **Solution**: Use **`nvidia/nemotron-3.5-bolt-e4b`** or **`nvidia/nemotron-3.5-lightning-30b-a3b`**, which pass Claude Code agent prompts with zero safety false positives and support native structured function/tool calling.
+To use Kimi or GLM, update `.env`:
+```dotenv
+OPENROUTER_API_KEY="sk-or-v1-your-key-here"
+MODEL_SONNET="open_router/moonshotai/kimi-k2.5:free"
+MODEL_HAIKU="open_router/z-ai/glm-4.5-air:free"
+```
 
 ---
 
-## Repository File Map
+### 3. Adding Direct DeepSeek API
+*(Requires `DEEPSEEK_API_KEY="sk-..."` in `.env`)*
 
+```dotenv
+DEEPSEEK_API_KEY="sk-your-deepseek-key"
+MODEL_OPUS="deepseek/deepseek-reasoner"
+MODEL_SONNET="deepseek/deepseek-chat"
 ```
-E:\ClaudeCode\
-├── .claude\
-│   ├── litellm-config.yaml   # Proxy routing & model definitions (environment variable interpolation)
-│   ├── settings.json         # Active Claude Code settings (base URL, auth token, active model)
-│   ├── .env.example          # Template environment configuration file
-│   ├── switch_provider.py    # Python CLI tool to switch modes/models
-│   ├── choose_model.py       # InquirerPy interactive fuzzy model selector
-│   └── set_nvidia_key.py     # API key validator and synchronizer
-├── bin\
-│   ├── start-claude-gateway.cmd # Starts the translation gateway on port 4000
-│   ├── claude-model.cmd         # Launches model selector & Claude Code
-│   ├── claude-provider.cmd      # CLI wrapper for switch_provider.py
-│   ├── set-nvidia-key.cmd       # CLI wrapper for set_nvidia_key.py
-│   └── cm.cmd                   # Short alias for claude-model
-├── .gitignore                # Ignores .env and Python cache files
-├── install.bat               # 1-click installer for Command Prompt
-├── install.ps1               # 1-click installer for PowerShell
-└── README.md                 # Complete documentation (this file)
+
+---
+
+### 4. Running 100% Locally (LM Studio / llama.cpp)
+*(Zero cost, no internet or API key required)*
+
+Run LM Studio local server on `http://localhost:1234/v1`:
+```dotenv
+MODEL="lmstudio/unsloth/Qwen3.5-35B-A3B-GGUF"
 ```
+Or with `llama-server` on `http://localhost:8080/v1`:
+```dotenv
+LLAMACPP_BASE_URL="http://localhost:8080/v1"
+MODEL="llamacpp/local-model"
+```
+
+---
+
+## 📁 Repository Structure & Included Files
+
+```text
+ClaudeCode/
+├── .claude/
+│   ├── settings.json          # Claude Code runtime environment & endpoints
+│   ├── choose_model.py        # Dynamic interactive model selection script
+│   └── set_nvidia_key.py      # Automated NVIDIA NIM key updater
+├── bin/
+│   ├── start-claude-gateway.cmd # Gateway launcher on port 8082
+│   ├── claude-model.cmd         # Model switcher command
+│   ├── cm.cmd                   # Shortcut for claude-model
+│   └── set-nvidia-key.cmd       # API key updater command
+├── proxy/                       # The core tool-enabled gateway engine
+│   ├── api/                     # FastAPI Anthropic /v1/messages routes
+│   ├── core/
+│   │   └── anthropic/
+│   │       ├── tools.py         # Advanced Heuristic Tool Parser (Solves chat-only issue)
+│   │       ├── conversion.py    # Anthropic <-> OpenAI format translation
+│   │       └── sse.py           # Anthropic Server-Sent Events stream generator
+│   ├── providers/               # Upstream adapters (NVIDIA NIM, OpenRouter, DeepSeek, Local)
+│   ├── server.py                # Gateway ASGI entrypoint
+│   ├── pyproject.toml           # Package configuration & dependencies
+│   ├── uv.lock                  # Deterministic dependency lockfile
+│   └── .env.example             # Clean environment template (no raw secrets)
+├── install.bat                  # One-click Windows CMD installer
+├── install.ps1                  # One-click Windows PowerShell installer
+├── .gitignore                   # Prevents secret & cache leakage
+└── README.md                    # Complete documentation
+```
+
+---
+
+## 🛠️ Verification & Testing
+
+To test that tool calling is physically working on your machine:
+
+```powershell
+claude -p "Create a file named verify_agent.txt containing 'agent works'. Do not just talk, execute the tool." --dangerously-skip-permissions
+```
+
+If configured properly, Claude Code will:
+1. Stream through the gateway on port 8082.
+2. Translate the model output into an Anthropic `Write` tool block.
+3. Physically write `verify_agent.txt` on your disk.
+4. Report: `Done - I created verify_agent.txt with the content agent works.`
+
+---
+
+## 🔒 Security & Privacy Notice
+
+- API keys (`NVIDIA_NIM_API_KEY`, `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`) are stored **locally only** in `%USERPROFILE%\.claude\proxy\.env`.
+- The repository `.gitignore` strictly excludes `.env` and `*.env` files to prevent accidental leakage to public GitHub repositories.
+- Never commit active keys to git remotes.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

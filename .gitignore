@@ -2,11 +2,22 @@
 .env
 *.env
 .claude/.env
+proxy/.env
 
-# Python
+# Python Virtual Environments
+.venv/
+proxy/.venv/
+
+# Python Cache & Bytecode
 __pycache__/
+*/__pycache__/
+*/*/__pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+proxy/.pytest_cache/
 
-# Logs
+# Logs & Temporary Files
 *.log
+proxy/server.log
+proxy/.DS_Store
