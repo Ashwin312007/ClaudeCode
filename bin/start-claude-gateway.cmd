@@ -16,10 +16,7 @@ if not exist "%PROXY_DIR%\server.py" (
 )
 
 rem Free port 8082 if an old instance is still running
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /r ":8082 " ^| findstr LISTENING') do (
-    echo [INFO] Releasing port 8082 from previous process (PID %%a)...
-    taskkill /f /pid %%a >nul 2>&1
-)
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /r ":8082 " ^| findstr LISTENING') do taskkill /f /pid %%a >nul 2>&1
 
 cd /d "%PROXY_DIR%"
 
