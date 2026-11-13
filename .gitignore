@@ -1,0 +1,12 @@
+# Environment and Secrets
+.env
+*.env
+.claude/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log

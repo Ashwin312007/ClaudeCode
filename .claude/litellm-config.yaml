@@ -1,0 +1,115 @@
+model_list:
+  # =========================================================================
+  # NVIDIA NIM - Free Flash & High Performance Models
+  # Uses hosted_vllm provider to route via standard /chat/completions
+  # =========================================================================
+
+  # Primary Flash Workhorse: NVIDIA Nemotron 3.5 Bolt (Ultra-Fast 0.5s)
+  - model_name: nemotron-bolt
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-bolt-e4b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  - model_name: bolt
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-bolt-e4b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  - model_name: flash
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-bolt-e4b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  # Claude Code Native Tier Mappings (Routes default Claude Code runs to Nemotron Bolt)
+  - model_name: claude-3-7-sonnet
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-bolt-e4b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-bolt-e4b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  - model_name: claude-3-5-haiku
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-bolt-e4b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  - model_name: claude-3-opus
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-lightning-30b-a3b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  # Reasoning Model: Nemotron 3.5 Lightning (30B MoE Reasoning)
+  - model_name: nemotron-lightning
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-lightning-30b-a3b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  - model_name: lightning
+    litellm_params:
+      model: hosted_vllm/nvidia/nemotron-3.5-lightning-30b-a3b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  # Heavyweight Model: Mistral Large 4 (1T Parameter MoE)
+  - model_name: mistral-large-4
+    litellm_params:
+      model: hosted_vllm/mistralai/mistral-large-4-1t-a52b
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  # Optional MiniMax M3.1 Flash (428B MoE)
+  - model_name: minimax-flash
+    litellm_params:
+      model: hosted_vllm/minimaxai/minimax-m3.1-flash
+      api_base: https://integrate.api.nvidia.com/v1
+      api_key: "os.environ/NVIDIA_API_KEY"
+
+  # ==========================================
+  # Google Gemini (Direct via Google AI Studio)
+  # ==========================================
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: "os.environ/GEMINI_API_KEY"
+  - model_name: gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: "os.environ/GEMINI_API_KEY"
+  - model_name: gemini-2.0-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: "os.environ/GEMINI_API_KEY"
+  - model_name: gemini-1.5-pro
+    litellm_params:
+      model: gemini/gemini-1.5-pro
+      api_key: "os.environ/GEMINI_API_KEY"
+
+  # ==========================================
+  # OpenRouter (via OpenRouter API Key)
+  # ==========================================
+  - model_name: openrouter/claude-3-7-sonnet
+    litellm_params:
+      model: openrouter/anthropic/claude-3.7-sonnet
+      api_key: "os.environ/OPENROUTER_API_KEY"
+  - model_name: openrouter/deepseek-chat
+    litellm_params:
+      model: openrouter/deepseek/deepseek-chat
+      api_key: "os.environ/OPENROUTER_API_KEY"
+
+general_settings:
+  master_key: "sk-claude-local-proxy-key"
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 180

@@ -1,0 +1,21 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4000",
+    "ANTHROPIC_AUTH_TOKEN": "sk-claude-local-proxy-key",
+    "ANTHROPIC_API_KEY": "",
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
+    "ANTHROPIC_MODEL": "claude-3-5-sonnet",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-3-5-sonnet",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-3-opus",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-3-5-haiku",
+    "NVIDIA_API_KEY": "YOUR_NVIDIA_API_KEY",
+    "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
+    "OPENROUTER_API_KEY": "YOUR_OPENROUTER_API_KEY"
+  },
+  "model": "claude-3-5-sonnet",
+  "effortLevel": "medium",
+  "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
+  "theme": "dark-daltonized",
+  "agentPushNotifEnabled": true
+}
