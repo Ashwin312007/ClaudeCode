@@ -39,23 +39,38 @@ flowchart TD
 
 ## Quick Installation (1-Click)
 
-If you clone this repository or copy it to a new machine, run either:
+To set up this harness from scratch on any Windows machine:
 
-### Windows Command Prompt / File Explorer:
-Double-click or run:
-```cmd
-install.bat
+### 1. Clone the Repository
+```bash
+git clone https://github.com/Ashwin312007/ClaudeCode.git
+cd ClaudeCode
 ```
 
-### Windows PowerShell:
-```powershell
-.\install.ps1
-```
+### 2. Run the Installer
+- **Command Prompt / File Explorer**: Double-click or run:
+  ```cmd
+  install.bat
+  ```
+- **PowerShell**:
+  ```powershell
+  .\install.ps1
+  ```
 
-### What the Installer Does:
-1. Copies configuration files to `%USERPROFILE%\.claude\`
-2. Copies terminal commands to `%USERPROFILE%\.local\bin\`
-3. Automatically ensures `%USERPROFILE%\.local\bin` is in your User `PATH`
+### 3. Set Your NVIDIA API Key
+```bash
+set-nvidia-key <your-nvapi-key>
+```
+*(This automatically validates your key against NVIDIA NIM and synchronizes it across all configs).*
+
+### 4. Start the Gateway & Launch Claude Code
+```bash
+start-claude-gateway
+```
+In a new terminal or project folder:
+```bash
+claude
+```
 
 ---
 
@@ -83,7 +98,7 @@ Ensure the following tools are installed on your machine:
 You can easily plug in any new model from NVIDIA NIM, OpenRouter, or Gemini.
 
 ### Step 1: Add the Model to `litellm-config.yaml`
-Open `C:\Users\<username>\.claude\litellm-config.yaml`.
+Open `%USERPROFILE%\.claude\litellm-config.yaml` (or edit `.claude\litellm-config.yaml` in this repository).
 
 #### Case A: Adding an NVIDIA NIM Model (e.g. GLM-5.3-Flash, Kimi K2.6 / K3.1, DeepSeek)
 > [!IMPORTANT]
@@ -96,21 +111,21 @@ model_list:
     litellm_params:
       model: hosted_vllm/z-ai/glm-5.3-flash
       api_base: https://integrate.api.nvidia.com/v1
-      api_key: "nvapi-YOUR_KEY"
+      api_key: "os.environ/NVIDIA_API_KEY"
 
   # Example: Moonshot Kimi K2.6 / K3.1
   - model_name: kimi-pro
     litellm_params:
       model: hosted_vllm/moonshotai/kimi-k2.6
       api_base: https://integrate.api.nvidia.com/v1
-      api_key: "nvapi-YOUR_KEY"
+      api_key: "os.environ/NVIDIA_API_KEY"
 
   # Example: DeepSeek V4.1 Flash
   - model_name: deepseek-flash
     litellm_params:
       model: hosted_vllm/deepseek-ai/deepseek-v4.1-flash
       api_base: https://integrate.api.nvidia.com/v1
-      api_key: "nvapi-YOUR_KEY"
+      api_key: "os.environ/NVIDIA_API_KEY"
 ```
 
 #### Case B: Adding an OpenRouter Free Model (`:free`)
@@ -119,18 +134,18 @@ OpenRouter hosts many models with free rate limits (e.g. Llama 3.3 70B, Qwen Cod
   - model_name: llama-free
     litellm_params:
       model: openrouter/meta-llama/llama-3.3-70b-instruct:free
-      api_key: "sk-or-v1-YOUR_KEY"
+      api_key: "os.environ/OPENROUTER_API_KEY"
 
   - model_name: qwen-free
     litellm_params:
       model: openrouter/qwen/qwen-2.5-coder-32b-instruct:free
-      api_key: "sk-or-v1-YOUR_KEY"
+      api_key: "os.environ/OPENROUTER_API_KEY"
 ```
 
 ---
 
 ### Step 2: Add the Model to the Interactive Picker (`choose_model.py`)
-Open `C:\Users\<username>\.claude\choose_model.py` and add an entry under `CURATED_MODELS`:
+Open `%USERPROFILE%\.claude\choose_model.py` and add an entry under `CURATED_MODELS`:
 ```python
 CURATED_MODELS = [
     Separator("--- NVIDIA NIM Flash & High-Performance Models ---"),
@@ -204,9 +219,9 @@ Certain models on NVIDIA NIM (such as `minimaxai/minimax-m3.1-flash`) have stric
 ```
 E:\ClaudeCode\
 ├── .claude\
-│   ├── litellm-config.yaml   # Proxy routing & model definitions
+│   ├── litellm-config.yaml   # Proxy routing & model definitions (environment variable interpolation)
 │   ├── settings.json         # Active Claude Code settings (base URL, auth token, active model)
-│   ├── .env                  # Environment backup with API keys
+│   ├── .env.example          # Template environment configuration file
 │   ├── switch_provider.py    # Python CLI tool to switch modes/models
 │   ├── choose_model.py       # InquirerPy interactive fuzzy model selector
 │   └── set_nvidia_key.py     # API key validator and synchronizer
@@ -216,6 +231,7 @@ E:\ClaudeCode\
 │   ├── claude-provider.cmd      # CLI wrapper for switch_provider.py
 │   ├── set-nvidia-key.cmd       # CLI wrapper for set_nvidia_key.py
 │   └── cm.cmd                   # Short alias for claude-model
+├── .gitignore                # Ignores .env and Python cache files
 ├── install.bat               # 1-click installer for Command Prompt
 ├── install.ps1               # 1-click installer for PowerShell
 └── README.md                 # Complete documentation (this file)
